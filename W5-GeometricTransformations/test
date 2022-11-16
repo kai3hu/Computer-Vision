@@ -1,0 +1,47 @@
+import cv2
+import numpy as np
+
+
+# 读取照片
+img1 = cv2.imread('halfdome-00.png',0)  # 左半部分
+img2 = cv2.imread('halfdome-01.png',0)  # 右半部分
+
+h1, w1 = img1.shape[:2]
+h2, w2 = img2.shape[:2]
+
+
+# 创建sift检测器
+akaze = cv2.AKAZE_create()
+
+# 计算所有特征点的特征值kp和特征向量des并获取
+left_kp, left_des = akaze.detectAndCompute(img2, None)
+right_kp, right_des = akaze.detectAndCompute(img1, None)
+
+# BFMatcher解决匹配，但是不好的特征值匹配较多
+matcher = cv2.BFMatcher()
+matches = matcher.match(left_des, right_des)
+matches = sorted(matches, key=lambda x: x.distance)  # sort by good matches
+
+
+
+# 判断是否当前模型已经符合超过MinMatchNum个点
+
+src_pts = np.float32([left_kp[m.queryIdx].pt for m in matches]).reshape(-1, 1, 2)
+dst_pts = np.float32([right_kp[m.trainIdx].pt for m in matches]).reshape(-1, 1, 2)
+# 在这里调用RANSAC方法得到解H
+H, module = cv2.findHomography(src_pts, dst_pts, cv2.RANSAC, 5.0)
+wrap = cv2.warpPerspective(img2, H, (w2 + w2, h2 + h2))
+cv2.imshow('Right', wrap)
+wrap[0:h2, 0:w2] = img1
+# 得到新的位置
+rows, cols = np.where(wrap[:, :] != 0)
+min_row, max_row = min(rows), max(rows) + 1
+min_col, max_col = min(cols), max(cols) + 1
+# 去除黑色无用部分
+LeftAndRight = wrap[min_row:max_row, min_col:max_col]
+
+# 结果显示
+scale = 0.5
+cv2.imshow('LeftAndRight', cv2.resize(LeftAndRight, (0, 0), fx=scale, fy=scale, interpolation=cv2.INTER_NEAREST))  # 拼接结果
+cv2.waitKey(0)
+cv2.destroyAllWindows()
